@@ -3,19 +3,7 @@ require_once $_SERVER['DOCUMENT_ROOT'] . '/modals/footer.php';
 logger();
 ?>
 <div style="margin-bottom: 100px;"></div>
-<script src="/js/bootstrap.min.js"></script>
-<script src="/js/bootstrap-switch.min.js"></script>
-<script src="/js/bootstrap-slider.min.js"></script>
-<script src="/js/bootstrap-select.min.js"></script>
-<script src="/js/bootstrap-filestyle.min.js"></script>
-<script src="/js/notifications.min.js"></script>
-<script src="/js/formcache.min.js"></script>
-<script src="/js/google.charts.loader.js"></script>
-<script src="/js/numberedtextarea.min.js"></script>
-<script src="/js/sha1.min.js"></script>
-<script src="/js/u2f-api.js"></script>
-<script src="/js/api.js"></script>
-<script src="/js/mailcow.js"></script>
+<script type='text/javascript'><?=$js_minifier->minify();?></script>
 <script>
 <?php
 $lang_footer = json_encode($lang['footer']);
@@ -38,6 +26,10 @@ $(window).load(function() {
   $(".overlay").hide();
 });
 $(document).ready(function() {
+  $(document).on('shown.bs.modal', function(e) {
+    modal_id = $(e.relatedTarget).data('target');
+    $(modal_id).attr("aria-hidden","false");
+  });
   // TFA, CSRF, Alerts in footer.inc.php
   // Other general functions in mailcow.js
   <?php
@@ -105,6 +97,15 @@ $(document).ready(function() {
     }
     if ($(this).val() == "totp") {
       $('#TOTPModal').modal('show');
+      request_token = $('#tfa-qr-img').data('totp-secret');
+      $.ajax({
+        url: '/inc/ajax/qr_gen.php',
+        data: {
+          token: request_token,
+        },
+      }).done(function (result) {
+        $("#tfa-qr-img").attr("src", result);
+      });
       $("option:selected").prop("selected", false);
     }
     if ($(this).val() == "u2f") {

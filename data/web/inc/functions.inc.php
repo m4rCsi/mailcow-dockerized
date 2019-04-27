@@ -1,4 +1,12 @@
 <?php
+function isset_has_content($var) {
+  if (isset($var) && $var != "") {
+    return true;
+  }
+  else {
+    return false;
+  }
+}
 function hash_password($password) {
 	$salt_str = bin2hex(openssl_random_pseudo_bytes(8));
 	return "{SSHA256}".base64_encode(hash('sha256', $password . $salt_str, true) . $salt_str);
@@ -406,6 +414,7 @@ function check_login($user, $pass) {
 	$user = strtolower(trim($user));
 	$stmt = $pdo->prepare("SELECT `password` FROM `admin`
 			WHERE `superadmin` = '1'
+			AND `active` = '1'
 			AND `username` = :user");
 	$stmt->execute(array(':user' => $user));
 	$rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
@@ -611,6 +620,8 @@ function edit_user_account($_data) {
 function user_get_alias_details($username) {
 	global $lang;
 	global $pdo;
+  $data['direct_aliases'] = false;
+  $data['shared_aliases'] = false;
   if ($_SESSION['mailcow_cc_role'] == "user") {
     $username	= $_SESSION['mailcow_cc_username'];
   }
@@ -618,7 +629,7 @@ function user_get_alias_details($username) {
     return false;
   }
   $data['address'] = $username;
-  $stmt = $pdo->prepare("SELECT IFNULL(GROUP_CONCAT(`address` SEPARATOR ', '), '&#10008;') AS `shared_aliases` FROM `alias`
+  $stmt = $pdo->prepare("SELECT `address` AS `shared_aliases`, `public_comment` FROM `alias`
     WHERE `goto` REGEXP :username_goto
     AND `address` NOT LIKE '@%'
     AND `goto` != :username_goto2
@@ -630,9 +641,12 @@ function user_get_alias_details($username) {
     ));
   $run = $stmt->fetchAll(PDO::FETCH_ASSOC);
   while ($row = array_shift($run)) {
-    $data['shared_aliases'] = $row['shared_aliases'];
+    $data['shared_aliases'][$row['shared_aliases']]['public_comment'] = htmlspecialchars($row['public_comment']);
+
+    //$data['shared_aliases'][] = $row['shared_aliases'];
   }
-  $stmt = $pdo->prepare("SELECT GROUP_CONCAT(`address` SEPARATOR ', ') AS `direct_aliases` FROM `alias`
+
+  $stmt = $pdo->prepare("SELECT `address` AS `direct_aliases`, `public_comment` FROM `alias`
     WHERE `goto` = :username_goto
     AND `address` NOT LIKE '@%'
     AND `address` != :username_address");
@@ -640,21 +654,22 @@ function user_get_alias_details($username) {
     array(
     ':username_goto' => $username,
     ':username_address' => $username
-    ));
+  ));
   $run = $stmt->fetchAll(PDO::FETCH_ASSOC);
   while ($row = array_shift($run)) {
-    $data['direct_aliases'][] = $row['direct_aliases'];
+    $data['direct_aliases'][$row['direct_aliases']]['public_comment'] = htmlspecialchars($row['public_comment']);
   }
-  $stmt = $pdo->prepare("SELECT GROUP_CONCAT(local_part, '@', alias_domain SEPARATOR ', ') AS `ad_alias` FROM `mailbox`
+  $stmt = $pdo->prepare("SELECT CONCAT(local_part, '@', alias_domain) AS `ad_alias`, `alias_domain` FROM `mailbox`
     LEFT OUTER JOIN `alias_domain` on `target_domain` = `domain`
       WHERE `username` = :username ;");
   $stmt->execute(array(':username' => $username));
   $run = $stmt->fetchAll(PDO::FETCH_ASSOC);
   while ($row = array_shift($run)) {
-    $data['direct_aliases'][] = $row['ad_alias'];
+    if (empty($row['ad_alias'])) {
+      continue;
+    }
+    $data['direct_aliases'][$row['ad_alias']]['public_comment'] = '↪ ' . $row['alias_domain'];
   }
-  $data['direct_aliases'] = implode(', ', array_filter($data['direct_aliases']));
-  $data['direct_aliases'] = empty($data['direct_aliases']) ? '&#10008;' : $data['direct_aliases'];
   $stmt = $pdo->prepare("SELECT IFNULL(GROUP_CONCAT(`send_as` SEPARATOR ', '), '&#10008;') AS `send_as` FROM `sender_acl` WHERE `logged_in_as` = :username AND `send_as` NOT LIKE '@%';");
   $stmt->execute(array(':username' => $username));
   $run = $stmt->fetchAll(PDO::FETCH_ASSOC);
@@ -679,7 +694,7 @@ function is_valid_domain_name($domain_name) {
 	if (empty($domain_name)) {
 		return false;
 	}
-	$domain_name = idn_to_ascii($domain_name);
+	$domain_name = idn_to_ascii($domain_name, 0, INTL_IDNA_VARIANT_UTS46);
 	return (preg_match("/^([a-z\d](-*[a-z\d])*)(\.([a-z\d](-*[a-z\d])*))*$/i", $domain_name)
 		   && preg_match("/^.{1,253}$/", $domain_name)
 		   && preg_match("/^[^\.]{1,63}(\.[^\.]{1,63})*$/", $domain_name));
@@ -1449,6 +1464,45 @@ function get_logs($application, $lines = false) {
     }
     curl_close($curl);
     return false;
+  }
+  return false;
+}
+function getGUID() {
+  if (function_exists('com_create_guid')) {
+    return com_create_guid();
+  }
+  mt_srand((double)microtime()*10000);//optional for php 4.2.0 and up.
+  $charid = strtoupper(md5(uniqid(rand(), true)));
+  $hyphen = chr(45);// "-"
+  return substr($charid, 0, 8).$hyphen
+        .substr($charid, 8, 4).$hyphen
+        .substr($charid,12, 4).$hyphen
+        .substr($charid,16, 4).$hyphen
+        .substr($charid,20,12);
+}
+function solr_status() {
+  $curl = curl_init();
+  $endpoint = 'http://solr:8983/solr/admin/cores';
+  $params = array(
+    'action' => 'STATUS',
+    'core' => 'dovecot-fts',
+    'indexInfo' => 'true'
+  );
+  $url = $endpoint . '?' . http_build_query($params);
+  curl_setopt($curl, CURLOPT_URL, $url);
+  curl_setopt($curl, CURLOPT_RETURNTRANSFER, 1);
+  curl_setopt($curl, CURLOPT_POST, 0);
+  curl_setopt($curl, CURLOPT_TIMEOUT, 20);
+  $response = curl_exec($curl);
+  if ($response === false) {
+    $err = curl_error($curl);
+    curl_close($curl);
+    return false;
+  }
+  else {
+    curl_close($curl);
+    $status = json_decode($response, true);
+    return (!empty($status['status']['dovecot-fts'])) ? $status['status']['dovecot-fts'] : false;
   }
   return false;
 }

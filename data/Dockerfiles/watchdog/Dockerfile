@@ -1,4 +1,4 @@
-FROM alpine:3.8
+FROM alpine:3.9
 LABEL maintainer "André Peters <andre.peters@servercow.de>"
 
 # Installation
@@ -12,6 +12,7 @@ RUN apk add --update \
   coreutils \
   jq \
   fcgi \
+  openssl \
   nagios-plugins-mysql \
   nagios-plugins-dns \
   nagios-plugins-disk \

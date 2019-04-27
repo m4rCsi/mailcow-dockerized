@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/env bash
 
 set -o pipefail
 
@@ -16,6 +16,7 @@ if [ -f mailcow.conf ]; then
   case $response in
     [yY][eE][sS]|[yY])
       mv mailcow.conf mailcow.conf_backup
+      chmod 600 mailcow.conf_backup
       ;;
     *)
       exit 1
@@ -47,6 +48,44 @@ while [ -z "${MAILCOW_TZ}" ]; do
     [ -z "${MAILCOW_TZ}" ] && MAILCOW_TZ=${DETECTED_TZ}
   fi
 done
+
+MEM_TOTAL=$(awk '/MemTotal/ {print $2}' /proc/meminfo)
+
+if [ ${MEM_TOTAL} -le "2621440" ]; then
+  echo "Installed memory is <= 2.5 GiB. It is recommended to disable ClamAV to prevent out-of-memory situations."
+  echo "ClamAV can be re-enabled by setting SKIP_CLAMD=n in mailcow.conf."
+  read -r -p  "Do you want to disable ClamAV now? [Y/n] " response
+  case $response in
+    [nN][oO]|[nN])
+      SKIP_CLAMD=n
+      ;;
+    *)
+      SKIP_CLAMD=y
+    ;;
+  esac
+else
+  SKIP_CLAMD=n
+fi
+
+if [ ${MEM_TOTAL} -le "2097152" ]; then
+  echo "Disabling Solr on low-memory system."
+  SKIP_SOLR=y
+elif [ ${MEM_TOTAL} -le "3670016" ]; then
+  echo "Installed memory is <= 3.5 GiB. It is recommended to disable Solr to prevent out-of-memory situations."
+  echo "Solr is a prone to run OOM and should be monitored. The default Solr heap size is 1024 MiB and should be set in mailcow.conf according to your expected load."
+  echo "Solr can be re-enabled by setting SKIP_SOLR=n in mailcow.conf but will refuse to start with less than 2 GB total memory."
+  read -r -p  "Do you want to disable Solr now? [Y/n] " response
+  case $response in
+    [nN][oO]|[nN])
+      SKIP_SOLR=n
+      ;;
+    *)
+      SKIP_SOLR=y
+    ;;
+  esac
+else
+  SKIP_SOLR=n
+fi
 
 [ ! -f ./data/conf/rspamd/override.d/worker-controller-password.inc ] && echo '# Placeholder' > ./data/conf/rspamd/override.d/worker-controller-password.inc
 
@@ -110,6 +149,12 @@ TZ=${MAILCOW_TZ}
 
 COMPOSE_PROJECT_NAME=mailcowdockerized
 
+# Set this to "allow" to enable the anyone pseudo user. Disabled by default.
+# When enabled, ACL can be created, that apply to "All authenticated users"
+# This should probably only be activated on mail hosts, that are used exclusivly by one organisation.
+# Otherwise a user might share data with too many other users.
+ACL_ANYONE=disallow
+
 # Garbage collector cleanup
 # Deleted domains and mailboxes are moved to /var/vmail/_garbage/timestamp_sanitizedstring
 # How long should objects remain in the garbage until they are being deleted? (value in minutes)
@@ -141,13 +186,28 @@ SKIP_LETS_ENCRYPT=n
 
 SKIP_IP_CHECK=n
 
+# Skip HTTP verification in ACME container - y/n
+
+SKIP_HTTP_VERIFICATION=n
+
 # Skip ClamAV (clamd-mailcow) anti-virus (Rspamd will auto-detect a missing ClamAV container) - y/n
 
-SKIP_CLAMD=n
+SKIP_CLAMD=${SKIP_CLAMD}
+
+# Skip Solr on low-memory systems or if you do not want to store a readable index of your mails in solr-vol-1.
+SKIP_SOLR=${SKIP_SOLR}
+
+# Solr heap size in MB, there is no recommendation, please see Solr docs.
+# Solr is a prone to run OOM and should be monitored. Unmonitored Solr setups are not recommended.
+SOLR_HEAP=1024
 
 # Enable watchdog (watchdog-mailcow) to restart unhealthy containers (experimental)
 
 USE_WATCHDOG=n
+
+# Allow admins to log into SOGo as email user (without any password)
+
+ALLOW_ADMIN_EMAIL_LOGIN=n
 
 # Send notifications by mail (no DKIM signature, sent from watchdog@MAILCOW_HOSTNAME)
 # Can by multiple rcpts, NO quotation marks
@@ -182,9 +242,14 @@ IPV6_NETWORK=fd4d:6169:6c63:6f77::/64
 #API_KEY=
 #API_ALLOW_FROM=127.0.0.1,1.2.3.4
 
+# mail_home is ~/Maildir
+MAILDIR_SUB=Maildir
+
 EOF
 
 mkdir -p data/assets/ssl
+
+chmod 600 mailcow.conf
 
 # copy but don't overwrite existing certificate
 cp -n data/assets/ssl-example/*.pem data/assets/ssl/

@@ -49,6 +49,20 @@ if (isset($_SESSION['mailcow_cc_role'])) {
                 </div>
               </div>
             </div>
+            <hr>
+            <div class="form-group">
+              <label class="control-label col-sm-2" for="private_"><?=$lang['edit']['private_comment'];?></label>
+              <div class="col-sm-10">
+                <input maxlength="160" class="form-control" type="text" name="private_comment" value="<?=htmlspecialchars($result['private_comment']);?>" />
+              </div>
+            </div>
+            <div class="form-group">
+              <label class="control-label col-sm-2" for="public_comment"><?=$lang['edit']['public_comment'];?></label>
+              <div class="col-sm-10">
+                <input maxlength="160" class="form-control" type="text" name="public_comment" value="<?=htmlspecialchars($result['public_comment']);?>" />
+              </div>
+            </div>
+            <hr>
             <div class="form-group">
               <div class="col-sm-offset-2 col-sm-10">
                 <div class="checkbox">
@@ -236,6 +250,7 @@ if (isset($_SESSION['mailcow_cc_role'])) {
           <form data-id="editdomain" class="form-horizontal" role="form" method="post">
             <input type="hidden" value="0" name="active">
             <input type="hidden" value="0" name="backupmx">
+            <input type="hidden" value="0" name="gal">
             <input type="hidden" value="0" name="relay_all_recipients">
             <div class="form-group">
               <label class="control-label col-sm-2" for="description"><?=$lang['edit']['description'];?></label>
@@ -299,6 +314,14 @@ if (isset($_SESSION['mailcow_cc_role'])) {
             <?php
             }
             ?>
+            <div class="form-group">
+              <div class="col-sm-offset-2 col-sm-10">
+                <div class="checkbox">
+                  <label><input type="checkbox" value="1" name="gal" <?=(isset($result['gal_int']) && $result['gal_int']=="1") ? "checked" : null;?>> <?=$lang['edit']['gal'];?></label>
+                  <small class="help-block"><?=$lang['edit']['gal_info'];?></small>
+                </div>
+              </div>
+            </div>
             <div class="form-group">
               <div class="col-sm-offset-2 col-sm-10">
                 <div class="checkbox">
@@ -498,7 +521,8 @@ if (isset($_SESSION['mailcow_cc_role'])) {
               <br /><span id="quotaBadge" class="badge">max. <?=intval($result['max_new_quota'] / 1048576)?> MiB</span>
             </label>
             <div class="col-sm-10">
-              <input type="number" name="quota" style="width:100%" min="1" max="<?=intval($result['max_new_quota'] / 1048576);?>" value="<?=intval($result['quota']) / 1048576;?>" class="form-control">
+              <input type="number" name="quota" style="width:100%" min="0" max="<?=intval($result['max_new_quota'] / 1048576);?>" value="<?=intval($result['quota']) / 1048576;?>" class="form-control">
+              <small class="help-block">0 = ∞</small>
             </div>
           </div>
           <div class="form-group">
@@ -1156,7 +1180,7 @@ if (isset($_SESSION['mailcow_cc_role'])) {
             <div class="form-group">
               <label class="control-label col-sm-2" for="script_data">Script:</label>
               <div class="col-sm-10">
-                <textarea spellcheck="false" autocorrect="off" autocapitalize="none" class="form-control" rows="20" id="script_data" name="script_data" required><?=$result['script_data'];?></textarea>
+                <textarea spellcheck="false" autocorrect="off" autocapitalize="none" class="form-control textarea-code" rows="20" id="script_data" name="script_data" required><?=$result['script_data'];?></textarea>
               </div>
             </div>
             <div class="form-group">
@@ -1203,8 +1227,7 @@ echo "var csrf_token = '". $_SESSION['CSRF']['TOKEN'] . "';\n";
 echo "var pagination_size = '". $PAGINATION_SIZE . "';\n";
 ?>
 </script>
-<script src="/js/footable.min.js"></script>
-<script src="/js/edit.js"></script>
 <?php
+$js_minifier->add('/web/js/site/edit.js');
 require_once $_SERVER['DOCUMENT_ROOT'] . '/inc/footer.inc.php';
 ?>
